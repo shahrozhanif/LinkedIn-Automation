@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LinkedIn Post Review</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f4f2ee;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 620px;
+      width: 100%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .linkedin-icon {
+      width: 32px; height: 32px;
+      background: #0A66C2;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 700; font-size: 16px;
+    }
+    h1 { font-size: 20px; font-weight: 600; color: #1a1a1a; }
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 24px;
+      padding: 10px 14px;
+      background: #f9f9f9;
+      border-radius: 8px;
+      border: 1px solid #eee;
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.waiting { background: #f59e0b; animation: pulse 1.5s infinite; }
+    .dot.ready   { background: #10b981; }
+    .dot.error   { background: #ef4444; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+    }
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #999;
+      margin-bottom: 6px;
+    }
+    .post-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+    .post-body {
+      font-size: 15px;
+      color: #333;
+      line-height: 1.7;
+      margin-bottom: 28px;
+      white-space: pre-wrap;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px 0;
+      color: #aaa;
+    }
+    .empty-state svg { margin-bottom: 12px; opacity: 0.4; }
+    .empty-state p { font-size: 14px; }
+    textarea {
+      width: 100%;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 80px;
+      margin-bottom: 20px;
+      color: #333;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+    textarea:focus { border-color: #0A66C2; }
+    textarea::placeholder { color: #bbb; }
+    .actions { display: flex; gap: 12px; }
+    button {
+      flex: 1;
+      padding: 12px;
+      border-radius: 8px;
+      border: none;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-approve {
+      background: #0A66C2;
+      color: white;
+    }
+    .btn-approve:hover:not(:disabled) { background: #0958a8; }
+    .btn-reject {
+      background: white;
+      color: #e53e3e;
+      border: 1.5px solid #e53e3e;
+    }
+    .btn-reject:hover:not(:disabled) { background: #fff5f5; }
+    .toast {
+      margin-top: 20px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toast.success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+    .toast.error   { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .divider { border: none; border-top: 1px solid #eee; margin: 24px 0; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+const API = "";  // same origin — FastAPI serves this file
+
+function App() {
+  const [post, setPost]         = useState({ title: "", body: "" });
+  const [reason, setReason]     = useState("");
+  const [toast, setToast]       = useState(null);
+  const [polling, setPolling]   = useState(true);
+  const [loading, setLoading]   = useState(false);
+  const [connErr, setConnErr]   = useState(false);
+  const intervalRef             = useRef(null);
+
+  const hasContent = post.title || post.body;
+
+  const fetchPost = async () => {
+    try {
+      const res  = await fetch(`${API}/post`);
+      const data = await res.json();
+      setPost(data);
+      setConnErr(false);
+    } catch {
+      setConnErr(true);
+    }
+  };
+
+  useEffect(() => {
+    fetchPost();
+    intervalRef.current = setInterval(fetchPost, 3000);
+    return () => clearInterval(intervalRef.current);
+  }, []);
+
+  const showToast = (msg, type) => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const sendDecision = async (status) => {
+    setLoading(true);
+    try {
+      await fetch(`${API}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, reason: status === "rejected" ? reason : undefined }),
+      });
+      showToast(
+        status === "approved" ? "Post approved and sent ✓" : "Post rejected.",
+        status === "approved" ? "success" : "error"
+      );
+      if (status === "approved") setReason("");
+    } catch {
+      showToast("Failed to send decision. Check your connection.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const statusDot = connErr ? "error" : hasContent ? "ready" : "waiting";
+  const statusMsg = connErr
+    ? "Cannot reach API"
+    : hasContent
+    ? "Post ready for review"
+    : "Waiting for content from n8n...";
+
+  return (
+    <div className="card">
+      <div className="header">
+        <div className="linkedin-icon">in</div>
+        <h1>LinkedIn Post Review</h1>
+      </div>
+
+      <div className="status-bar">
+        <span className={`dot ${statusDot}`}/>
+        {statusMsg}
+      </div>
+
+      {hasContent ? (
+        <>
+          <div className="section-label">Title</div>
+          <div className="post-title">{post.title}</div>
+
+          <div className="section-label">Body</div>
+          <div className="post-body">{post.body}</div>
+
+          <hr className="divider"/>
+
+          <textarea
+            placeholder="Reason for rejection (optional)..."
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+          />
+
+          <div className="actions">
+            <button
+              className="btn-approve"
+              onClick={() => sendDecision("approved")}
+              disabled={loading}
+            >
+              Approve
+            </button>
+            <button
+              className="btn-reject"
+              onClick={() => sendDecision("rejected")}
+              disabled={loading}
+            >
+              Reject
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          <p>No post received yet.<br/>Trigger your n8n workflow to get started.</p>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`toast ${toast.type}`}>
+          {toast.type === "success" ? "✓" : "✕"} {toast.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
