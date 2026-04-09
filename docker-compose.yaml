@@ -1,13 +1,13 @@
 version: '3'
 services:
-  postgres_2:
+  postgres:
     image: postgres
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  n8n_2:
+  n8n:
     image: n8nio/n8n
     ports:
       - "5678:5678"
@@ -17,7 +17,7 @@ services:
       - n8n_data:/home/node/.n8n
 
   app:
-    image: abubakar352/testapp
+    image: abubakar352/app
     ports:
       - 8000:8000
 
