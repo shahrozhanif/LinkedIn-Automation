@@ -184,25 +184,28 @@ function App() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const sendDecision = async (status) => {
-    setLoading(true);
-    try {
-      await fetch(`${API}/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, reason: status === "rejected" ? reason : undefined }),
-      });
-      showToast(
-        status === "approved" ? "Post approved and sent ✓" : "Post rejected.",
-        status === "approved" ? "success" : "error"
-      );
-      if (status === "approved") setReason("");
-    } catch {
-      showToast("Failed to send decision. Check your connection.", "error");
-    } finally {
-      setLoading(false);
+const sendDecision = async (status) => {
+  setLoading(true);
+  try {
+    await fetch(`${API}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, reason: status === "rejected" ? reason : undefined }),
+    });
+
+    if (status === "approved") {
+      setPost({ title: "", body: "" });
+      setToast({ msg: "approved", type: "success" });
+    } else {
+      setReason("");
+      showToast("Post rejected. A new post will be generated shortly.", "error");
     }
-  };
+  } catch {
+    showToast("Failed to send decision. Check your connection.", "error");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const statusDot = connErr ? "error" : hasContent ? "ready" : "waiting";
   const statusMsg = connErr
@@ -223,13 +226,26 @@ function App() {
         {statusMsg}
       </div>
 
-      {hasContent ? (
+      {toast?.msg === "approved" ? (
+        <div style={{ textAlign: "center", padding: "40px 0" }}>
+          <div style={{ fontSize: "48px", marginBottom: "16px" }}>✅</div>
+          <h2 style={{ fontSize: "20px", fontWeight: "700", color: "#1a1a1a", marginBottom: "12px" }}>
+            The post has been published to your LinkedIn Profile.
+          </h2>
+          <p style={{ fontSize: "14px", color: "#666", lineHeight: "1.6" }}>
+            Thank you for using our service. Your next post will be generated automatically on the scheduled time.
+          </p>
+        </div>
+      ) : hasContent ? (
         <>
           <div className="section-label">Title</div>
           <div className="post-title">{post.title}</div>
 
           <div className="section-label">Body</div>
-          <div className="post-body">{post.body}</div>
+          <div
+            className="post-body"
+            dangerouslySetInnerHTML={{ __html: post.body.replace(/\\n|\n/g, '<br/>') }}
+          />
 
           <hr className="divider"/>
 
@@ -240,21 +256,19 @@ function App() {
           />
 
           <div className="actions">
-            <button
-              className="btn-approve"
-              onClick={() => sendDecision("approved")}
-              disabled={loading}
-            >
-              Approve
+            <button className="btn-approve" onClick={() => sendDecision("approved")} disabled={loading}>
+              Approve & Publish
             </button>
-            <button
-              className="btn-reject"
-              onClick={() => sendDecision("rejected")}
-              disabled={loading}
-            >
+            <button className="btn-reject" onClick={() => sendDecision("rejected")} disabled={loading}>
               Reject
             </button>
           </div>
+
+          {toast && toast.msg !== "approved" && (
+            <div className={`toast ${toast.type}`}>
+              {toast.type === "success" ? "✓" : "✕"} {toast.msg}
+            </div>
+          )}
         </>
       ) : (
         <div className="empty-state">
