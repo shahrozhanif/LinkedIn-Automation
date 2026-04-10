@@ -17,7 +17,7 @@ services:
       - n8n_data:/home/node/.n8n
 
   app:
-    image: abubakar352/app
+    image: abubakar352/app:0.0.1.RELEASE
     ports:
       - 8000:8000
 
