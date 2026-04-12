@@ -15,7 +15,9 @@ services:
       - "5678:5678"
     volumes:
       - n8n_data_2:/home/node/.n8n
-
+    environment:
+      - N8N_SECURE_COOKIE=false
+      
   app:
     image: abubakar352/app:0.0.1.RELEASE
     ports:

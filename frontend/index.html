@@ -84,13 +84,6 @@
       margin-bottom: 28px;
       white-space: pre-wrap;
     }
-    .empty-state {
-      text-align: center;
-      padding: 40px 0;
-      color: #aaa;
-    }
-    .empty-state svg { margin-bottom: 12px; opacity: 0.4; }
-    .empty-state p { font-size: 14px; }
     textarea {
       width: 100%;
       border: 1px solid #ddd;
@@ -149,23 +142,45 @@
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
-const API = "";  // same origin — FastAPI serves this file
+const API = "";
 
 function App() {
-  const [post, setPost]         = useState({ title: "", body: "" });
-  const [reason, setReason]     = useState("");
-  const [toast, setToast]       = useState(null);
-  const [polling, setPolling]   = useState(true);
-  const [loading, setLoading]   = useState(false);
-  const [connErr, setConnErr]   = useState(false);
-  const intervalRef             = useRef(null);
+  const [post, setPost]               = useState({ title: "", body: "" });
+  const [reason, setReason]           = useState("");
+  const [toast, setToast]             = useState(null);
+  const [loading, setLoading]         = useState(false);
+  const [connErr, setConnErr]         = useState(false);
+  const [generateState, setGenerateState] = useState("idle");
+  // Tracks whether user has ever approved a post in this session
+  const [everApproved, setEverApproved]   = useState(false);
+  const intervalRef                   = useRef(null);
 
   const hasContent = post.title || post.body;
+
+  const handleGenerate = async () => {
+    setLoading(true);
+    setGenerateState("waiting");
+    try {
+      await fetch(`${API}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "generate" }),
+      });
+    } catch {
+      showToast("Failed to trigger generation. Check your connection.", "error");
+      setGenerateState("idle");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchPost = async () => {
     try {
       const res  = await fetch(`${API}/post`);
       const data = await res.json();
+      if ((data.title || data.body) && generateState === "waiting") {
+        setGenerateState("idle");
+      }
       setPost(data);
       setConnErr(false);
     } catch {
@@ -177,35 +192,37 @@ function App() {
     fetchPost();
     intervalRef.current = setInterval(fetchPost, 3000);
     return () => clearInterval(intervalRef.current);
-  }, []);
+  }, [generateState]);
 
   const showToast = (msg, type) => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
   };
 
-const sendDecision = async (status) => {
-  setLoading(true);
-  try {
-    await fetch(`${API}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, reason: status === "rejected" ? reason : undefined }),
-    });
+  const sendDecision = async (status) => {
+    setLoading(true);
+    try {
+      await fetch(`${API}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, reason: status === "rejected" ? reason : undefined }),
+      });
 
-    if (status === "approved") {
-      setPost({ title: "", body: "" });
-      setToast({ msg: "approved", type: "success" });
-    } else {
-      setReason("");
-      showToast("Post rejected. A new post will be generated shortly.", "error");
+      if (status === "approved") {
+        setPost({ title: "", body: "" });
+        setEverApproved(true);
+        setGenerateState("idle");
+        setToast(null);
+      } else {
+        setReason("");
+        showToast("Post rejected. A new post will be generated shortly.", "error");
+      }
+    } catch {
+      showToast("Failed to send decision. Check your connection.", "error");
+    } finally {
+      setLoading(false);
     }
-  } catch {
-    showToast("Failed to send decision. Check your connection.", "error");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const statusDot = connErr ? "error" : hasContent ? "ready" : "waiting";
   const statusMsg = connErr
@@ -214,76 +231,113 @@ const sendDecision = async (status) => {
     ? "Post ready for review"
     : "Waiting for content from n8n...";
 
+  // --- APPROVED SCREEN (only shown after user has approved a post) ---
+  if (everApproved && !hasContent) {
+    return (
+      <div className="card">
+        <div className="header">
+          <div className="linkedin-icon">in</div>
+          <h1>LinkedIn Post Review</h1>
+        </div>
+        <div style={{ textAlign: "center", padding: "40px 0" }}>
+          <div style={{ fontSize: "48px", marginBottom: "16px" }}>✅</div>
+          <h2 style={{ fontSize: "20px", fontWeight: "700", color: "#1a1a1a", marginBottom: "20px" }}>
+            The post has been published to your LinkedIn Profile.
+          </h2>
+          {generateState === "idle" && (
+            <button
+              className="btn-approve"
+              style={{ maxWidth: "260px", margin: "0 auto", display: "block" }}
+              onClick={handleGenerate}
+              disabled={loading}
+            >
+              Generate Another Post
+            </button>
+          )}
+          {generateState === "waiting" && (
+            <div className="status-bar" style={{ justifyContent: "center", marginTop: "8px" }}>
+              <span className="dot waiting"/>
+              Generating post, please wait...
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // --- POST REVIEW SCREEN ---
+  if (hasContent) {
+    return (
+      <div className="card">
+        <div className="header">
+          <div className="linkedin-icon">in</div>
+          <h1>LinkedIn Post Review</h1>
+        </div>
+        <div className="status-bar">
+          <span className={`dot ${statusDot}`}/>
+          {statusMsg}
+        </div>
+        <div className="section-label">Title</div>
+        <div className="post-title">{post.title}</div>
+        <div className="section-label">Body</div>
+        <div
+          className="post-body"
+          dangerouslySetInnerHTML={{ __html: post.body.replace(/\\n|\n/g, '<br/>') }}
+        />
+        <hr className="divider"/>
+        <textarea
+          placeholder="Reason for rejection (optional)..."
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+        />
+        <div className="actions">
+          <button className="btn-approve" onClick={() => sendDecision("approved")} disabled={loading}>
+            Approve &amp; Publish
+          </button>
+          <button className="btn-reject" onClick={() => sendDecision("rejected")} disabled={loading}>
+            Reject
+          </button>
+        </div>
+        {toast && (
+          <div className={`toast ${toast.type}`}>
+            {toast.type === "success" ? "✓" : "✕"} {toast.msg}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // --- INITIAL SCREEN (first load, no post yet) ---
   return (
     <div className="card">
       <div className="header">
         <div className="linkedin-icon">in</div>
         <h1>LinkedIn Post Review</h1>
       </div>
-
-      <div className="status-bar">
-        <span className={`dot ${statusDot}`}/>
-        {statusMsg}
-      </div>
-
-      {toast?.msg === "approved" ? (
-        <div style={{ textAlign: "center", padding: "40px 0" }}>
-          <div style={{ fontSize: "48px", marginBottom: "16px" }}>✅</div>
-          <h2 style={{ fontSize: "20px", fontWeight: "700", color: "#1a1a1a", marginBottom: "12px" }}>
-            The post has been published to your LinkedIn Profile.
-          </h2>
-          <p style={{ fontSize: "14px", color: "#666", lineHeight: "1.6" }}>
-            Thank you for using our service. Your next post will be generated automatically on the scheduled time.
-          </p>
-        </div>
-      ) : hasContent ? (
-        <>
-          <div className="section-label">Title</div>
-          <div className="post-title">{post.title}</div>
-
-          <div className="section-label">Body</div>
-          <div
-            className="post-body"
-            dangerouslySetInnerHTML={{ __html: post.body.replace(/\\n|\n/g, '<br/>') }}
-          />
-
-          <hr className="divider"/>
-
-          <textarea
-            placeholder="Reason for rejection (optional)..."
-            value={reason}
-            onChange={e => setReason(e.target.value)}
-          />
-
-          <div className="actions">
-            <button className="btn-approve" onClick={() => sendDecision("approved")} disabled={loading}>
-              Approve & Publish
-            </button>
-            <button className="btn-reject" onClick={() => sendDecision("rejected")} disabled={loading}>
-              Reject
-            </button>
+      <div style={{ textAlign: "center", padding: "40px 0" }}>
+        {generateState === "idle" && (
+          <button
+            className="btn-approve"
+            style={{ maxWidth: "220px", margin: "0 auto", display: "block" }}
+            onClick={handleGenerate}
+            disabled={loading}
+          >
+            Generate A Post
+          </button>
+        )}
+        {generateState === "waiting" && (
+          <div className="status-bar" style={{ justifyContent: "center" }}>
+            <span className="dot waiting"/>
+            Generating post, please wait...
           </div>
-
-          {toast && toast.msg !== "approved" && (
-            <div className={`toast ${toast.type}`}>
-              {toast.type === "success" ? "✓" : "✕"} {toast.msg}
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="empty-state">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
-          </svg>
-          <p>No post received yet.<br/>Trigger your n8n workflow to get started.</p>
-        </div>
-      )}
-
-      {toast && (
-        <div className={`toast ${toast.type}`}>
-          {toast.type === "success" ? "✓" : "✕"} {toast.msg}
-        </div>
-      )}
+        )}
+        {connErr && (
+          <div className="status-bar" style={{ justifyContent: "center", marginTop: "12px" }}>
+            <span className="dot error"/>
+            Cannot reach API
+          </div>
+        )}
+      </div>
     </div>
   );
 }

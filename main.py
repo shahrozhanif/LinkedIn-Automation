@@ -38,15 +38,13 @@ def get_post():
 async def approve(payload: ApprovalPayload):
     import httpx
     global latest_post
+    N8N_WEBHOOK = "http://n8n:5678/webhook/f5323699-6a4f-474c-a0c7-9ab1bff6b7d3"
 
-    if payload.status == "rejected":
-        N8N_WEBHOOK = "http://n8n:5678/webhook/f5323699-6a4f-474c-a0c7-9ab1bff6b7d3"
+    if payload.status in ("rejected", "generate"):
         async with httpx.AsyncClient() as client:
             await client.post(N8N_WEBHOOK, json=payload.model_dump())
-    
-    # Clear the post regardless of approve or reject
+
     latest_post = {"title": "", "body": ""}
-    
     return {"status": payload.status}
 
 # Serve the React frontend
