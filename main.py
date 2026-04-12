@@ -38,11 +38,15 @@ def get_post():
 async def approve(payload: ApprovalPayload):
     import httpx
     global latest_post
-    N8N_WEBHOOK = "http://n8n:5678/webhook/f5323699-6a4f-474c-a0c7-9ab1bff6b7d3"
+    POST_GENERATION_WEBHOOK = "http://n8n:5678/webhook/f5323699-6a4f-474c-a0c7-9ab1bff6b7d3"
+    DATABASE_INJECTION_WEBHOOK = "http://n8n:5678/webhook/04404c73-4897-48c1-8057-b72d6208c45a"
 
-    if payload.status in ("rejected", "generate"):
-        async with httpx.AsyncClient() as client:
-            await client.post(N8N_WEBHOOK, json=payload.model_dump())
+    async with httpx.AsyncClient() as client:
+        if payload.status in ("rejected", "generate"):
+            await client.post(POST_GENERATION_WEBHOOK, json=payload.model_dump())
+
+        if payload.status == "approved":
+            await client.get(DATABASE_INJECTION_WEBHOOK)
 
     latest_post = {"title": "", "body": ""}
     return {"status": payload.status}
